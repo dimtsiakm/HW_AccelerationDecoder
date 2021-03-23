@@ -1,0 +1,10 @@
+bin/
+Debug/
+include/
+lib/
+packages/
+Release/
+DecoderUWP/
+DecoderHWA/
+x64/
+.vs/
