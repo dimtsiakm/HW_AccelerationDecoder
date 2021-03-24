@@ -31,9 +31,7 @@ int SDLFunctionality::Init() {
         return EXIT_FAILURE;
     }
 }
-
-int SDLFunctionality::ShowImage(sdecoded_frame* s) {
-    //bmp = IMG_Load(filename);
+int SDLFunctionality::ShowImage(s_decoded_frame* s) {
     bmp = SDL_CreateRGBSurfaceFrom(s->data, s->width, s->height, 24, s->linesize, 0x0000FF, 0x00FF00, 0xFF0000, 0x000000);
     
     if (bmp == nullptr) {
@@ -47,7 +45,6 @@ int SDLFunctionality::ShowImage(sdecoded_frame* s) {
         SDL_Quit();
         return EXIT_FAILURE;
     }
-
     tex = SDL_CreateTextureFromSurface(ren, bmp);
     if (tex == nullptr) {
         cerr << "SDL_CreateTextureFromSurface Error: " << SDL_GetError() << endl;
@@ -67,8 +64,8 @@ int SDLFunctionality::ShowImage(sdecoded_frame* s) {
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
     SDL_RenderPresent(ren);
+    return EXIT_SUCCESS;
 }
-
 int SDLFunctionality::Quit() {
     SDL_DestroyTexture(tex);
     SDL_DestroyRenderer(ren);

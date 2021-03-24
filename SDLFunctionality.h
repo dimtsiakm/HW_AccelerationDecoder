@@ -3,12 +3,15 @@
 #include "SDL.h"
 #include "SDL_image.h"
 
-struct svideoparams {
+struct buffer_data {
+	uint8_t* ptr;
+	size_t size; ///< size left in the buffer
+};
+struct s_dimension {
 	int width;
 	int height;
-	double frame_rate;
 };
-struct sdecoded_frame {
+struct s_decoded_frame {
 	uint8_t* data; //data as rgb or yuv format; set the dependencies
 	int linesize;
 	int width;
@@ -24,6 +27,6 @@ class SDLFunctionality
 	public:
 		SDLFunctionality();
 		int Init();
-		int ShowImage(sdecoded_frame* s);
+		int ShowImage(s_decoded_frame* s);
 		int Quit();
 };
