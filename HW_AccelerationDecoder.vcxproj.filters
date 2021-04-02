@@ -26,5 +26,8 @@
     <ClInclude Include="SDLFunctionality.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="dxva2api.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

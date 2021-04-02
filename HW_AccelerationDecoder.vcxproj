@@ -149,6 +149,7 @@
     <ClCompile Include="SDLFunctionality.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="dxva2api.h" />
     <ClInclude Include="SDLFunctionality.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

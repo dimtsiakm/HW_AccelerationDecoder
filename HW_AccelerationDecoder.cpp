@@ -19,6 +19,7 @@ extern "C"
     #include "libavutil/imgutils.h"
     #include "SDL.h"
     #include "SDL_image.h"
+#include "libavcodec/dxva2.h"
 #include <libavutil/file.h>
 }
 
@@ -57,6 +58,8 @@ static enum AVPixelFormat hw_pix_fmt;
 typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::microseconds us;
 typedef std::chrono::duration<float> fsec;
+
+const char* device_name = "d3d11va";
 
 static int read_packet(void* opaque, uint8_t* buf, int buf_size)
 {
@@ -122,19 +125,19 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 		return NULL;
 	}
 
-	
-	Codec = avcodec_find_decoder_by_name("h264_cuvid");
+	/*
+	Codec = avcodec_find_decoder_by_name(decoder_name);
 	if (Codec == NULL)
-	{printf("avcodec_find_decoder_by_name h264_cuvid failed\n");
+	{printf("avcodec_find_decoder_by_name dxva2 failed\n");
 		return NULL;
 	}
-	
-	/*ret = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &Codec, 0);
+	*/
+	ret = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &Codec, 0);
 	if (ret < 0) {
 		fprintf(stderr, "Cannot find a video stream in the input file\n");
 		return NULL;
 	}
-	*/
+	
 
 	if (ret = avcodec_open2(codec_ctx, Codec, NULL) < 0)
 	{
@@ -183,7 +186,7 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 	numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 16);
 	buffer_rgb = (uint8_t*)av_malloc(numBytes * sizeof(uint8_t));
 
-	sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, codec_ctx->pix_fmt, codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24, SWS_BILINEAR, NULL, NULL, NULL);
+	sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, AV_PIX_FMT_NV12, codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24, SWS_BILINEAR, NULL, NULL, NULL);
 	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer_rgb, AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 1);
 
 	dimension_export->width = codec_ctx->width;
@@ -205,7 +208,7 @@ s_dimension* init_ffmpeg_hw_acceleration(uint8_t* buffer_in, int buffer_size_in)
 	*/
 	s_dimension* dimension_export = (s_dimension*)malloc(sizeof(s_dimension));
 	dimension_export = init_ffmpeg(buffer_in, buffer_size_in);
-	type = av_hwdevice_find_type_by_name("cuda");
+	type = av_hwdevice_find_type_by_name(device_name);
 	//https://github.com/FFmpeg/FFmpeg/blob/7b100839330ace3b4846ee4a1fc5caf4b8f8a34e/doc/examples/hw_decode.c#L166
 	//show available device type ^
 
@@ -239,7 +242,6 @@ s_decoded_frame* decode_ffmpeg_hw_acceleration(uint8_t* data, int length)
 		printf("Error : av_packet_from_data\n");
 		return NULL;
 	}
-
 	s_decoded_frame* struct_export = decode_hw_acceleration(codec_ctx, frame, pkt);
 	return struct_export;
 }
@@ -368,6 +370,9 @@ s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 	struct_export->width = codec_ctx->width;
 	struct_export->height = codec_ctx->height;
 
+	av_frame_unref(frame);
+	av_frame_unref(pFrameRGB);
+
 	return struct_export;
 }
 s_decoded_frame* decode_ffmpeg(uint8_t* data, int length)
@@ -391,17 +396,18 @@ int main()
 	size_t iSize = NULL;
 	s_decoded_frame* struct_extracted = NULL;
 
+	
     sdlf->Init();
 	printf("Hello World!\n");
 	av_file_map(get_filename(0), &data, &iSize, NULL, NULL);
-	dims = init_ffmpeg(data, iSize);
+	dims = init_ffmpeg_hw_acceleration(data, iSize);
 	if (dims != NULL) {
 		printf("width, height :: %d, %d\n", dims->width, dims->height);
 	}
     while (i < 100) {
 		
 		auto t0 = Time::now();
-		s_decoded_frame* frame = decode_ffmpeg(data, iSize);
+		s_decoded_frame* frame = decode_ffmpeg_hw_acceleration(data, iSize);
 		auto t1 = Time::now();
 		fsec fs = t1 - t0;
 		us d = std::chrono::duration_cast<us>(fs);
