@@ -64,11 +64,11 @@ int SDLFunctionality::ShowImage(s_decoded_frame* s) {
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, nullptr);
     SDL_RenderPresent(ren);
-    //system("pause");
+    //SDL_DestroyTexture(tex);
     return EXIT_SUCCESS;
 }
 int SDLFunctionality::Quit() {
-    SDL_DestroyTexture(tex);
+    
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
