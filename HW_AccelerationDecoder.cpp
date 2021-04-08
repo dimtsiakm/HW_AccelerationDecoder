@@ -22,9 +22,7 @@ extern "C"
 #include "libavcodec/dxva2.h"
 #include <libavutil/file.h>
 }
-
 #include "SDLFunctionality.h"
-
 
 #undef main
 
@@ -59,9 +57,7 @@ typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::microseconds us;
 typedef std::chrono::duration<float> fsec;
 
-const char* device_name = "d3d11va";
-const char* decoder_name = "h264_cuvid";
-
+const char* device_name;
 bool hardware_acceleration = false;
 
 static int read_packet(void* opaque, uint8_t* buf, int buf_size)
@@ -80,7 +76,8 @@ static int read_packet(void* opaque, uint8_t* buf, int buf_size)
 }
 static enum AVPixelFormat get_hw_format(AVCodecContext* ctx, const enum AVPixelFormat* pix_fmts)
 {
-	const enum AVPixelFormat* p;
+	
+	const enum AVPixelFormat* p = 0;
 	for (p = pix_fmts; *p != -1; p++) {
 		if (*p == hw_pix_fmt)
 			return *p;
@@ -127,12 +124,22 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 		printf("Cannot get codec parameters\n");
 		return NULL;
 	}
-	Codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+
+	ret = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &Codec, 0);
+	if (ret < 0) {
+		printf("Could not find %s stream in input file\n");
+		return NULL;
+	}
+
+	/*
+	Codec = avcodec_find_decoder_by_name("h264");//avcodec_find_decoder(AV_CODEC_ID_H264);
 	//Codec = avcodec_find_decoder_by_name("h264");
 	if (Codec == NULL)
 	{printf("avcodec_find_decoder h264 failed\n");
 		return NULL;
 	}
+	*/
+
 	if (ret = avcodec_open2(codec_ctx, Codec, NULL) < 0)
 	{
 		printf("Cannot open video decoder\n");
@@ -207,9 +214,11 @@ s_dimension* init_ffmpeg_hw_acceleration(uint8_t* buffer_in, int buffer_size_in)
 		}
 	}
 	*/
+	
 	s_dimension* dimension_export = (s_dimension*)malloc(sizeof(s_dimension));
 	hardware_acceleration = true;
 	dimension_export = init_ffmpeg(buffer_in, buffer_size_in);
+	codec_ctx->get_format = get_hw_format;
 	type = av_hwdevice_find_type_by_name(device_name);
 	//https://github.com/FFmpeg/FFmpeg/blob/7b100839330ace3b4846ee4a1fc5caf4b8f8a34e/doc/examples/hw_decode.c#L166
 	//show available device type ^
@@ -227,13 +236,14 @@ s_dimension* init_ffmpeg_hw_acceleration(uint8_t* buffer_in, int buffer_size_in)
 			break;
 		}
 	}
-	codec_ctx->get_format = get_hw_format;
 	int err = 0;
 	if ((err = av_hwdevice_ctx_create(&hw_device_ctx, type, NULL, NULL, 0)) < 0) {
 		fprintf(stderr, "Failed to create specified HW device.\n");
 		return NULL;
 	}
 	codec_ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
+	
+	
 
 	return dimension_export;
 }
@@ -387,40 +397,61 @@ s_decoded_frame* decode_ffmpeg(uint8_t* data, int length)
 
 int main()
 {
-    printf("START PROGRAM __");
-    SDLFunctionality* sdlf = new SDLFunctionality();
-    int i = 1;
+	static const char* const hw_type_names[] = {
+		 "cuda",
+		 "drm",
+		 "dxva2",
+		 "d3d11va",
+		 "opencl",
+		 "qsv",
+		 "vaapi",
+		 "vdpau",
+		 "videotoolbox",
+		 "mediacodec",
+	};
+	
+	printf("name :: %s\n", hw_type_names[3]);
+	device_name = hw_type_names[3];
+
+	printf("START PROGRAM __");
+	SDLFunctionality* sdlf = new SDLFunctionality();
+
 	s_dimension* dims;
 	uint8_t* data = NULL;
 	size_t iSize = NULL;
 	s_decoded_frame* struct_extracted = NULL;
-	
-    sdlf->Init();
-	printf("Hello World!\n");
-	av_file_map(get_filename(0), &data, &iSize, NULL, NULL);
 
+	sdlf->Init();
+	printf("Hello World!\n");
+
+	int i = 30;
+	av_file_map(get_filename(i), &data, &iSize, NULL, NULL);
 	dims = init_ffmpeg_hw_acceleration(data, iSize);
 	if (dims != NULL) {
 		printf("width, height :: %d, %d\n", dims->width, dims->height);
 	}
-    while (i < 100) {
-		
+	int lim = i + 8;
+	while (i < lim) {
 		auto t0 = Time::now();
 		s_decoded_frame* frame = decode_ffmpeg_hw_acceleration(data, iSize);
 		auto t1 = Time::now();
 		fsec fs = t1 - t0;
 		us d = std::chrono::duration_cast<us>(fs);
 		std::cout << d.count() << "us\n";
-		
+
 		if (frame != NULL) {
 			sdlf->ShowImage(frame);
 		}
 		av_file_map(get_filename(i), &data, &iSize, NULL, NULL);
-		i++;
-		if (i == 99) {
+		if (false)
+			return 0;
+		i = 30;
+		//return 0; 
+		if (i == lim - 1) {
 			i = 0;
 		}
-    }
+		
+	}
     //printf("close result : %d\n", 6);
     //sdlf->Quit();
 
