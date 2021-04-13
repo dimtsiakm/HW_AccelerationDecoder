@@ -60,6 +60,8 @@ typedef std::chrono::duration<float> fsec;
 const char* device_name;
 bool hardware_acceleration = false;
 
+us time_sws_scale;
+
 static int read_packet(void* opaque, uint8_t* buf, int buf_size)
 {
 	struct buffer_data* bd = (struct buffer_data*)opaque;
@@ -125,14 +127,15 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 		return NULL;
 	}
 
+	
 	ret = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &Codec, 0);
 	if (ret < 0) {
 		printf("Could not find %s stream in input file\n");
 		return NULL;
 	}
-
+	
 	/*
-	Codec = avcodec_find_decoder_by_name("h264");//avcodec_find_decoder(AV_CODEC_ID_H264);
+	Codec = avcodec_find_decoder_by_name("x264");//avcodec_find_decoder(AV_CODEC_ID_H264);
 	//Codec = avcodec_find_decoder_by_name("h264");
 	if (Codec == NULL)
 	{printf("avcodec_find_decoder h264 failed\n");
@@ -194,8 +197,8 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 	else {
 		pixel_format = codec_ctx->pix_fmt;
 	}
-	sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, pixel_format, codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24, SWS_BILINEAR, NULL, NULL, NULL);
-	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer_rgb, AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 1);
+	sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, pixel_format, codec_ctx->width/8, codec_ctx->height/8, AV_PIX_FMT_RGB24, SWS_BICUBIC, NULL, NULL, NULL);
+	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer_rgb, AV_PIX_FMT_RGB24, codec_ctx->width/8, codec_ctx->height/8, 1);
 
 	dimension_export->width = codec_ctx->width;
 	dimension_export->height = codec_ctx->height;
@@ -301,20 +304,26 @@ s_decoded_frame* decode_hw_acceleration(AVCodecContext* dec_ctx, AVFrame* frame,
 		t1 = Time::now();
 		fs = t1 - t0;
 		f = std::chrono::duration_cast<us>(fs);
-		
-		
 		tmp_frame = sw_frame;
 	}
 	else
 		tmp_frame = frame;
-	/*
+
+	
+	
 	std::cout << "input time : " << d.count() << "us\n";
 	std::cout << "exec time : " << e.count() << "us\n";
 	std::cout << "output time : " << f.count() << "us\n";
-	std::cout << "total time (d, e) : " << g.count() << "us\n\n";
-	*/
+	std::cout << "total time (d, e) : " << g.count() << "us\n";
+	
 	//Convert the image from its natice format to RGB.
+	t0 = Time::now();
 	sws_scale(sws_ctx, (uint8_t const* const*)tmp_frame->data, tmp_frame->linesize, 0, codec_ctx->height, pFrameRGB->data, pFrameRGB->linesize);
+
+	t1 = Time::now();
+	fs = t1 - t0;
+	time_sws_scale = std::chrono::duration_cast<us>(fs);
+	printf("sws_scale ran for %d micro\n", time_sws_scale);
 
 	struct_export->data = pFrameRGB->data[0];
 	struct_export->linesize = pFrameRGB->linesize[0];
@@ -374,6 +383,7 @@ s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 	}
 	fflush(stdout);
 
+	
 	//Convert the image from its natice format to RGB.
 	sws_scale(sws_ctx, (uint8_t const* const*)frame->data, frame->linesize, 0, codec_ctx->height, pFrameRGB->data, pFrameRGB->linesize);
 
@@ -412,6 +422,8 @@ int main()
 	
 	printf("name :: %s\n", hw_type_names[3]);
 	device_name = hw_type_names[3];
+	bool HW_ACC_FLAG = true;
+	s_decoded_frame* frame;
 
 	printf("START PROGRAM __");
 	SDLFunctionality* sdlf = new SDLFunctionality();
@@ -424,20 +436,36 @@ int main()
 	sdlf->Init();
 	printf("Hello World!\n");
 
-	int i = 30;
+	int i = 10;
 	av_file_map(get_filename(i), &data, &iSize, NULL, NULL);
-	dims = init_ffmpeg_hw_acceleration(data, iSize);
+	if (HW_ACC_FLAG) {
+		dims = init_ffmpeg_hw_acceleration(data, iSize);
+	}
+	else {
+		dims = init_ffmpeg(data, iSize);
+	}
+	
+	dims->height /= 8;
+	dims->width /= 8;
 	if (dims != NULL) {
 		printf("width, height :: %d, %d\n", dims->width, dims->height);
 	}
-	int lim = i + 8;
+	int lim = i + 10;
 	while (i < lim) {
 		auto t0 = Time::now();
-		s_decoded_frame* frame = decode_ffmpeg_hw_acceleration(data, iSize);
+		if (HW_ACC_FLAG) {
+			frame = decode_ffmpeg_hw_acceleration(data, iSize);
+		}
+		else {
+			frame = decode_ffmpeg(data, iSize);
+		}
+		
 		auto t1 = Time::now();
 		fsec fs = t1 - t0;
 		us d = std::chrono::duration_cast<us>(fs);
-		std::cout << d.count() << "us\n";
+
+		std::cout << d.count() << "us\n\n";
+		
 
 		if (frame != NULL) {
 			sdlf->ShowImage(frame);
@@ -445,10 +473,12 @@ int main()
 		av_file_map(get_filename(i), &data, &iSize, NULL, NULL);
 		if (false)
 			return 0;
-		i = 30;
-		//return 0; 
+		i++;
+		//i = 30;
+		//return 0;
 		if (i == lim - 1) {
-			i = 0;
+			i = 10;
+			return NULL;
 		}
 		
 	}

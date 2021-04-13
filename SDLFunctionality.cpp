@@ -32,7 +32,7 @@ int SDLFunctionality::Init() {
     }
 }
 int SDLFunctionality::ShowImage(s_decoded_frame* s) {
-    bmp = SDL_CreateRGBSurfaceFrom(s->data, s->width, s->height, 24, s->linesize, 0x0000FF, 0x00FF00, 0xFF0000, 0x000000);
+    bmp = SDL_CreateRGBSurfaceFrom(s->data, s->width/8, s->height/8, 24, s->linesize, 0x0000FF, 0x00FF00, 0xFF0000, 0x000000);
     
     if (bmp == nullptr) {
         cerr << "SDL_LoadBMP Error: " << SDL_GetError() << endl;
