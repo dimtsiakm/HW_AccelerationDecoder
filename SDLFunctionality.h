@@ -16,6 +16,7 @@ struct s_decoded_frame {
 	int linesize;
 	int width;
 	int height;
+	int buffer_size;
 };
 class SDLFunctionality
 {

@@ -19,8 +19,8 @@ extern "C"
     #include "libavutil/imgutils.h"
     #include "SDL.h"
     #include "SDL_image.h"
-#include "libavcodec/dxva2.h"
-#include <libavutil/file.h>
+	#include "libavcodec/dxva2.h"
+	#include <libavutil/file.h>
 }
 #include "SDLFunctionality.h"
 
@@ -76,6 +76,19 @@ static int read_packet(void* opaque, uint8_t* buf, int buf_size)
 
 	return buf_size;
 }
+
+static enum AVPixelFormat get_sw_format(AVCodecContext* ctx, const enum AVPixelFormat* pix_fmts)
+{
+
+	const enum AVPixelFormat* p = 0;
+	for (p = pix_fmts; *p != -1; p++) {
+		if (*p == AV_PIX_FMT_YUV420P)
+			return *p;
+	}
+
+	fprintf(stderr, "Failed to get HW surface format.\n");
+	return AV_PIX_FMT_NONE;
+}
 static enum AVPixelFormat get_hw_format(AVCodecContext* ctx, const enum AVPixelFormat* pix_fmts)
 {
 	
@@ -107,7 +120,6 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 		return NULL;
 	}
 	fmt_ctx->pb = avio_ctx;
-
 	ret = avformat_open_input(&fmt_ctx, NULL, NULL, NULL);
 	if (ret < 0) {
 		printf("Could not open input\n");
@@ -118,22 +130,18 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 		printf("Could not find stream information\n");
 		return NULL;
 	}
-
 	codec_ctx = avcodec_alloc_context3(NULL);
-
 	if (ret = avcodec_parameters_to_context(codec_ctx, fmt_ctx->streams[0]->codecpar) < 0)
 	{
 		printf("Cannot get codec parameters\n");
 		return NULL;
 	}
-
-	
 	ret = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &Codec, 0);
 	if (ret < 0) {
 		printf("Could not find %s stream in input file\n");
 		return NULL;
 	}
-	
+
 	/*
 	Codec = avcodec_find_decoder_by_name("x264");//avcodec_find_decoder(AV_CODEC_ID_H264);
 	//Codec = avcodec_find_decoder_by_name("h264");
@@ -190,6 +198,7 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 	numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 16);
 	buffer_rgb = (uint8_t*)av_malloc(numBytes * sizeof(uint8_t));
 
+
 	AVPixelFormat pixel_format;
 	if (hardware_acceleration) {
 		pixel_format = AV_PIX_FMT_NV12;
@@ -197,12 +206,12 @@ s_dimension* init_ffmpeg(uint8_t* buffer_in, int buffer_size_in)
 	else {
 		pixel_format = codec_ctx->pix_fmt;
 	}
-	sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, pixel_format, codec_ctx->width/8, codec_ctx->height/8, AV_PIX_FMT_RGB24, SWS_BICUBIC, NULL, NULL, NULL);
-	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer_rgb, AV_PIX_FMT_RGB24, codec_ctx->width/8, codec_ctx->height/8, 1);
+	sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, pixel_format, codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24, SWS_BICUBIC, NULL, NULL, NULL);
+	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer_rgb, AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 1);
 
 	dimension_export->width = codec_ctx->width;
 	dimension_export->height = codec_ctx->height;
-
+	
 	return dimension_export;
 }
 s_dimension* init_ffmpeg_hw_acceleration(uint8_t* buffer_in, int buffer_size_in)
@@ -226,6 +235,7 @@ s_dimension* init_ffmpeg_hw_acceleration(uint8_t* buffer_in, int buffer_size_in)
 	//https://github.com/FFmpeg/FFmpeg/blob/7b100839330ace3b4846ee4a1fc5caf4b8f8a34e/doc/examples/hw_decode.c#L166
 	//show available device type ^
 
+	
 	for (int i = 0;; i++) {
 		const AVCodecHWConfig* config = avcodec_get_hw_config(Codec, i);
 		if (!config) {
@@ -245,9 +255,6 @@ s_dimension* init_ffmpeg_hw_acceleration(uint8_t* buffer_in, int buffer_size_in)
 		return NULL;
 	}
 	codec_ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
-	
-	
-
 	return dimension_export;
 }
 s_decoded_frame* decode_ffmpeg_hw_acceleration(uint8_t* data, int length)
@@ -357,7 +364,7 @@ s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 	auto t1 = Time::now();
 	fsec fs = t1 - t0;
 	us d = std::chrono::duration_cast<us>(fs);
-
+	int k = d.count();
 
 	if (ret < 0) {
 		fprintf(stderr, "Error sending a packet for decoding\n");
@@ -370,6 +377,7 @@ s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 	t1 = Time::now();
 	fs = t1 - t0;
 	us e = std::chrono::duration_cast<us>(fs);
+	
 	std::cout << "input time : " << d.count() << "us\n";
 	std::cout << "exec time : " << e.count() << "us\n";
 
@@ -382,15 +390,17 @@ s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 		return NULL;
 	}
 	fflush(stdout);
-
 	
 	//Convert the image from its natice format to RGB.
-	sws_scale(sws_ctx, (uint8_t const* const*)frame->data, frame->linesize, 0, codec_ctx->height, pFrameRGB->data, pFrameRGB->linesize);
+	//sws_scale(sws_ctx, (uint8_t const* const*)frame->data, frame->linesize, 0, codec_ctx->height, pFrameRGB->data, pFrameRGB->linesize);
 
-	struct_export->data = pFrameRGB->data[0];
-	struct_export->linesize = pFrameRGB->linesize[0];
+	struct_export->data = frame->data[0];
+	struct_export->linesize = frame->linesize[0];
 	struct_export->width = codec_ctx->width;
 	struct_export->height = codec_ctx->height;
+
+	int buffer_size = av_image_get_buffer_size(codec_ctx->pix_fmt, codec_ctx->width, codec_ctx->height, frame->linesize[0]);
+	printf("buffer size :: %d\n", buffer_size);
 
 	return struct_export;
 }
@@ -422,7 +432,7 @@ int main()
 	
 	printf("name :: %s\n", hw_type_names[3]);
 	device_name = hw_type_names[3];
-	bool HW_ACC_FLAG = true;
+	bool HW_ACC_FLAG = false;
 	s_decoded_frame* frame;
 
 	printf("START PROGRAM __");
@@ -436,7 +446,7 @@ int main()
 	sdlf->Init();
 	printf("Hello World!\n");
 
-	int i = 10;
+	int i = 90;
 	av_file_map(get_filename(i), &data, &iSize, NULL, NULL);
 	if (HW_ACC_FLAG) {
 		dims = init_ffmpeg_hw_acceleration(data, iSize);
@@ -445,8 +455,6 @@ int main()
 		dims = init_ffmpeg(data, iSize);
 	}
 	
-	dims->height /= 8;
-	dims->width /= 8;
 	if (dims != NULL) {
 		printf("width, height :: %d, %d\n", dims->width, dims->height);
 	}
@@ -477,8 +485,8 @@ int main()
 		//i = 30;
 		//return 0;
 		if (i == lim - 1) {
-			i = 10;
-			return NULL;
+			i = lim - 10;
+			//return NULL;
 		}
 		
 	}
