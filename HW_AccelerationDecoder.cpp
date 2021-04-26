@@ -358,8 +358,8 @@ char* get_filename(int index_name)
 }
 s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 {
+	//av_frame_unref(frame);
 	auto t0 = Time::now();
-	auto tstart = t0;
 	ret = avcodec_send_packet(dec_ctx, pkt);
 	auto t1 = Time::now();
 	fsec fs = t1 - t0;
@@ -371,13 +371,14 @@ s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 		return NULL;
 	}
 	int index = 0;
-
+	printf("width, height, buffer_size : %d, %d\n", dec_ctx->width, dec_ctx->height);
 	t0 = Time::now();
 	ret = avcodec_receive_frame(dec_ctx, frame);
 	t1 = Time::now();
 	fs = t1 - t0;
 	us e = std::chrono::duration_cast<us>(fs);
-	
+
+
 	std::cout << "input time : " << d.count() << "us\n";
 	std::cout << "exec time : " << e.count() << "us\n";
 
@@ -390,22 +391,26 @@ s_decoded_frame* decode(AVCodecContext* dec_ctx, AVFrame* frame, AVPacket* pkt)
 		return NULL;
 	}
 	fflush(stdout);
-	
+
 	//Convert the image from its natice format to RGB.
 	//sws_scale(sws_ctx, (uint8_t const* const*)frame->data, frame->linesize, 0, codec_ctx->height, pFrameRGB->data, pFrameRGB->linesize);
+	//int buffer_size = av_image_get_buffer_size(codec_ctx->pix_fmt, codec_ctx->width, codec_ctx->height, 32);
+
 
 	struct_export->data = frame->data[0];
 	struct_export->linesize = frame->linesize[0];
 	struct_export->width = codec_ctx->width;
 	struct_export->height = codec_ctx->height;
+	struct_export->frame = (uint8_t*)frame;
 
-	int buffer_size = av_image_get_buffer_size(codec_ctx->pix_fmt, codec_ctx->width, codec_ctx->height, frame->linesize[0]);
-	printf("buffer size :: %d\n", buffer_size);
+	printf("width, height, buffer_size : %d, %d, %d\n", codec_ctx->width, codec_ctx->height, buffer_size);
+	printf("frame position :: %d is equal with ? :: %d", frame, struct_export->frame);
 
 	return struct_export;
 }
 s_decoded_frame* decode_ffmpeg(uint8_t* data, int length)
 {
+	AVFrame* frame = av_frame_alloc();
 	int result = av_packet_from_data(pkt, data, length);
 	if (result < 0) {
 		printf("Error : av_packet_from_data\n");
@@ -473,11 +478,11 @@ int main()
 		us d = std::chrono::duration_cast<us>(fs);
 
 		std::cout << d.count() << "us\n\n";
-		
 
 		if (frame != NULL) {
 			sdlf->ShowImage(frame);
 		}
+		av_frame_free((AVFrame**)&frame->frame);
 		av_file_map(get_filename(i), &data, &iSize, NULL, NULL);
 		if (false)
 			return 0;
@@ -488,9 +493,7 @@ int main()
 			i = lim - 10;
 			//return NULL;
 		}
-		
 	}
     //printf("close result : %d\n", 6);
     //sdlf->Quit();
-
 }
